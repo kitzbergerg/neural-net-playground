@@ -92,6 +92,7 @@ impl NeuralNet {
         outputs.iter().map(|output| *output / total).collect()
     }
 
+    // TODO: that's prob wrong
     pub fn backpropagation(&self, actual: Vec<f32>, target: Vec<f32>) -> Vec<Vec<Vec<f32>>> {
         // init first_term
         let init_first_term = actual.iter()
@@ -116,15 +117,20 @@ impl NeuralNet {
                     .collect::<Vec<_>>();
 
                 // calculate new weights
-                let new_weights_for_layer = prev_layer.iter().map(|node| {
-                    node.output_weights.iter().enumerate().map(|(i, w)| {
-                        w - self.learning_rate * first_term[i] * second_term[i] * third_term[i]
+                let weights_from_prev_layer = prev_layer.iter()
+                    .map(|node| node.output_weights.clone())
+                    .collect::<Vec<_>>()
+                    .transpose();
+                let new_weights_for_layer = current_layer.iter().enumerate().map(|(i_current_layer, node)| {
+                    weights_from_prev_layer[i_current_layer].iter().enumerate().map(|(i_prev_layer, w)| {
+                        w - self.learning_rate * first_term[i_current_layer] * second_term[i_current_layer] * third_term[i_prev_layer]
                     }).collect::<Vec<_>>()
                 })
-                    .collect::<Vec<_>>();
+                    .collect::<Vec<_>>()
+                    .transpose();
                 new_weights.push(new_weights_for_layer);
 
-                // calculate first term for next iteration
+                // calculate first_term for next iteration
                 prev_layer.iter().map(|node| {
                     izip!(&first_term, &second_term, &node.output_weights).map(|(f, s, w)| f * s * w).sum()
                 })
