@@ -22,7 +22,7 @@ impl Node {
         }
     }
 
-    pub fn calc_output(&mut self, inputs: Vec<Edge>) -> f32 {
+    pub fn calc_output(&mut self, inputs: &Vec<Edge>) -> f32 {
         let sum_of_input_times_weight = inputs.iter().map(|edge| edge.value * edge.weight).sum::<f32>();
         self.prev_input = sum_of_input_times_weight;
         let sum_with_bias = sum_of_input_times_weight + self.bias;
@@ -44,7 +44,7 @@ mod test {
             bias: 0.5,
             output_weights: vec![0.5],
         };
-        let out = node.calc_output(vec![
+        let out = node.calc_output(&vec![
             Edge { value: 1.0, weight: 1.0 },
             Edge {
                 value: 2.5,

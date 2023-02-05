@@ -25,7 +25,9 @@ pub fn train(neural_network: &mut NeuralNet, data: Data, number_of_outputs: usiz
     println!("Training data size: {}", data.0.len());
     for (training, label) in data.0 {
         let input = training.iter().map(|x| *x as f32).collect::<Vec<_>>();
+        // print_images(label, &input);
         let output = neural_network.feedforward_propagation(input);
+        // println!("output: {:?}", output);
 
         let mut actual = vec![0.0; number_of_outputs];
         let _ = replace(&mut actual[label as usize], 1.0);
@@ -42,7 +44,7 @@ pub fn test(neural_network: &mut NeuralNet, data: Data) {
     for (training, label) in data.0 {
         let input = training.iter().map(|x| *x as f32).collect::<Vec<_>>();
         let output = neural_network.feedforward_propagation(input);
-        println!("len: {}", output.len());
+        println!("output: {:?}", output);
         let index_of_max = output
             .iter()
             .enumerate()
@@ -56,4 +58,15 @@ pub fn test(neural_network: &mut NeuralNet, data: Data) {
     println!("{:#?}", neural_network);
     println!("Guessed {}/{} correctly", sum, total);
     println!("Success rate: {}%", 100.0 * sum / total as f32);
+}
+
+fn print_images(label: u8, input: &Vec<f32>) {
+    println!("input:");
+    for y in (0..28).into_iter() {
+        for x in (0..28).into_iter() {
+            print!("{}", if *input.get(y * 28 + x).unwrap() == 0.0 { " " } else { "X" });
+        }
+        println!()
+    }
+    println!("label: {}", label);
 }

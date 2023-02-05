@@ -37,10 +37,8 @@ impl NeuralNet {
 
         // walk through all hidden layers
         let outputs = self.layers.iter_mut()
-            .fold(initial_input, |inputs, current_layer| {
-                let next = Self::calc_inputs_of_next_layer(current_layer, inputs);
-                next
-            },
+            .fold(initial_input, |inputs, current_layer|
+                Self::calc_inputs_of_next_layer(current_layer, inputs),
             );
 
         // inner vec has only one value e.g. [[2],[3],...]
@@ -52,7 +50,6 @@ impl NeuralNet {
         outputs
     }
 
-    // TODO: that's prob wrong
     pub fn backpropagation(&self, actual: Vec<f32>, target: Vec<f32>) -> Vec<Vec<Vec<f32>>> {
         let init_first_term = actual.iter()
             .zip(target)
@@ -71,34 +68,32 @@ impl NeuralNet {
                     .map(|node| derivative_of_activation_function(node.prev_input))
                     .collect::<Vec<_>>();
 
-                let third_term = current_layer.iter()
-                    .enumerate()
-                    .map(|(i, _node)| prev_layer.iter().map(|prev_node| prev_node.prev_output * prev_node.output_weights[i]).collect::<Vec<_>>())
-                    .collect::<Vec<_>>();
-
                 // calculate new weights
-                let weights_from_prev_layer = prev_layer.iter()
-                    .map(|node| node.output_weights.clone())
-                    .collect::<Vec<_>>()
-                    .transpose();
-                let new_weights_for_layer = current_layer.iter()
-                    .enumerate()
-                    .map(|(i_of_node, _node)| {
-                        weights_from_prev_layer[i_of_node].iter()
-                            .enumerate()
-                            .map(|(i_of_weight_of_node, w)| {
-                                w - self.learning_rate * first_term[i_of_node] * second_term[i_of_node] * third_term[i_of_node][i_of_weight_of_node]
-                            }).collect::<Vec<_>>()
-                    })
-                    .collect::<Vec<_>>()
-                    .transpose();
+                let mut new_weights_for_layer = vec![vec![0.0; current_layer.len()]; prev_layer.len()];
+                for i_prev in (0..prev_layer.len()).into_iter() {
+                    for i_current in (0..current_layer.len()).into_iter() {
+                        let old_weight = prev_layer[i_prev].output_weights[i_current];
+                        let new_weight = old_weight -
+                            self.learning_rate *
+                                first_term[i_current] *
+                                derivative_of_activation_function(current_layer[i_current].prev_input) *
+                                prev_layer[i_prev].prev_output;
+                        new_weights_for_layer[i_prev][i_current] = new_weight;
+                    }
+                }
                 new_weights.push(new_weights_for_layer);
 
                 // calculate first_term for next iteration
-                prev_layer.iter().map(|node| {
-                    izip!(&first_term, &second_term, &node.output_weights).map(|(f, s, w)| f * s * w).sum()
-                })
-                    .collect()
+                let mut out = vec![0.0; prev_layer.len()];
+                for i_prev in (0..prev_layer.len()).into_iter() {
+                    let mut sum = 0.0;
+                    for i_current in (0..current_layer.len()).into_iter() {
+                        let weight = prev_layer[i_prev].output_weights[i_current];
+                        sum += weight * first_term[i_current] * second_term[i_current];
+                    }
+                    out[i_prev] = sum;
+                }
+                out
             });
 
         new_weights.reverse();
@@ -118,14 +113,25 @@ impl NeuralNet {
 
 
     fn calc_inputs_of_next_layer(nodes: &mut Vec<Node>, inputs: Vec<Vec<Edge>>) -> Vec<Vec<Edge>> {
-        nodes.iter_mut()
-            .zip(inputs)
-            .map(|(node, input)| {
-                let output = node.calc_output(input);
-                node.output_weights.iter().map(|weight| Edge { value: output, weight: *weight }).collect::<Vec<_>>()
-            })
-            .collect::<Vec<_>>()
-            .transpose()
+        // TODO: init differently
+        let mut out = vec![vec![Edge { value: 0.0, weight: 0.0 }; nodes[0].output_weights.len()]; nodes.len()];
+        for i in (0..nodes.len()).into_iter() {
+            let output = nodes[i].calc_output(&inputs[i]);
+            for j in (0..nodes[i].output_weights.len()).into_iter() {
+                out[i][j] = Edge { value: output, weight: nodes[i].output_weights[j] };
+            }
+        }
+        out
+        /*
+                nodes.iter_mut()
+                    .zip(inputs)
+                    .map(|(node, input)| {
+                        let output = node.calc_output(input);
+                        node.output_weights.iter().map(|weight| Edge { value: output, weight: *weight }).collect::<Vec<_>>()
+                    })
+                    .collect::<Vec<_>>()
+                    .transpose()
+                    */
     }
 
     fn random_nodes(size: usize, next_layer_size: usize) -> Vec<Node> {
