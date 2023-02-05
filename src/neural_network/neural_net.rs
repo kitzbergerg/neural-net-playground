@@ -1,7 +1,7 @@
 use itertools::izip;
 use crate::neural_network::edge::Edge;
 use crate::neural_network::node::Node;
-use crate::neural_network::utils::{activation_function, derivative_of_activation_function, derivative_of_cost_function, Transpose};
+use crate::neural_network::utils::{derivative_of_activation_function, derivative_of_cost_function, Transpose};
 
 #[derive(Debug)]
 pub struct NeuralNet {
@@ -29,7 +29,6 @@ impl NeuralNet {
             learning_rate,
             layers,
         };
-        println!("{:#?}", network);
         network
     }
 
@@ -37,9 +36,11 @@ impl NeuralNet {
         let initial_input = input.into_iter().map(|i| vec![Edge { value: i, weight: 1.0 }]).collect::<Vec<_>>();
 
         // walk through all hidden layers
-        let outputs = (0..self.layers.len()).into_iter()
-            .fold(initial_input, |inputs, current_layer|
-                Self::calc_inputs_of_next_layer(&mut self.layers[current_layer], inputs),
+        let outputs = self.layers.iter_mut()
+            .fold(initial_input, |inputs, current_layer| {
+                let next = Self::calc_inputs_of_next_layer(current_layer, inputs);
+                next
+            },
             );
 
         // inner vec has only one value e.g. [[2],[3],...]
@@ -48,14 +49,11 @@ impl NeuralNet {
             .map(|edge| edge.value)
             .collect::<Vec<_>>();
 
-        // Calculate percentages
-        let total = outputs.iter().sum::<f32>();
-        outputs.iter().map(|output| *output / total).collect()
+        outputs
     }
 
     // TODO: that's prob wrong
     pub fn backpropagation(&self, actual: Vec<f32>, target: Vec<f32>) -> Vec<Vec<Vec<f32>>> {
-        // init first_term
         let init_first_term = actual.iter()
             .zip(target)
             .map(|(a, t)| derivative_of_cost_function(a - t))
@@ -69,14 +67,13 @@ impl NeuralNet {
         self.layers.iter().rev()
             .zip(shifted_iter)
             .fold(init_first_term, |first_term, (current_layer, prev_layer)| {
-                // inputs_current_layer
                 let second_term = current_layer.iter()
                     .map(|node| derivative_of_activation_function(node.prev_input))
                     .collect::<Vec<_>>();
 
-                // outputs_prev_layer
-                let third_term = prev_layer.iter()
-                    .map(|node| node.prev_output)
+                let third_term = current_layer.iter()
+                    .enumerate()
+                    .map(|(i, _node)| prev_layer.iter().map(|prev_node| prev_node.prev_output * prev_node.output_weights[i]).collect::<Vec<_>>())
                     .collect::<Vec<_>>();
 
                 // calculate new weights
@@ -84,11 +81,15 @@ impl NeuralNet {
                     .map(|node| node.output_weights.clone())
                     .collect::<Vec<_>>()
                     .transpose();
-                let new_weights_for_layer = current_layer.iter().enumerate().map(|(i_current_layer, node)| {
-                    weights_from_prev_layer[i_current_layer].iter().enumerate().map(|(i_prev_layer, w)| {
-                        w - self.learning_rate * first_term[i_current_layer] * second_term[i_current_layer] * third_term[i_prev_layer]
-                    }).collect::<Vec<_>>()
-                })
+                let new_weights_for_layer = current_layer.iter()
+                    .enumerate()
+                    .map(|(i_of_node, _node)| {
+                        weights_from_prev_layer[i_of_node].iter()
+                            .enumerate()
+                            .map(|(i_of_weight_of_node, w)| {
+                                w - self.learning_rate * first_term[i_of_node] * second_term[i_of_node] * third_term[i_of_node][i_of_weight_of_node]
+                            }).collect::<Vec<_>>()
+                    })
                     .collect::<Vec<_>>()
                     .transpose();
                 new_weights.push(new_weights_for_layer);
@@ -131,5 +132,61 @@ impl NeuralNet {
         let mut vec = Vec::with_capacity(size);
         (0..size).for_each(|_| vec.push(Node::new_randomized(next_layer_size)));
         vec
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_learning_with_2_node_network() {
+        let target = 0.5;
+        let learning_rate = 0.1;
+        let input = 1.5;
+        let initial_weight = 0.8;
+
+        // 1 input node
+        // 1 output node
+        // initial weight of 0.8 between nodes
+        let mut network = NeuralNet {
+            learning_rate,
+            layers: vec![
+                vec![Node {
+                    prev_input: 0.0,
+                    prev_output: 0.0,
+                    bias: 0.0,
+                    output_weights: vec![initial_weight],
+                }],
+                vec![Node {
+                    prev_input: 0.0,
+                    prev_output: 0.0,
+                    bias: 0.0,
+                    output_weights: vec![1.0],
+                }],
+            ],
+        };
+
+        let mut prev_output = f32::MAX;
+        let mut prev_weight = network.layers[0][0].output_weights[0];
+        for i in (0..100).into_iter() {
+            println!("----- Iteration: {i} -----");
+            let actual = network.feedforward_propagation(vec![input]);
+            let new_weights = network.backpropagation(actual.clone(), vec![target]);
+            network.update_weights(new_weights.clone());
+
+            println!("Network output: {}, Target: {}", actual[0], target);
+            println!("Old weight: {}, New weight: {}", prev_weight, new_weights[0][0][0]);
+            println!();
+
+            // check if weight were really updated
+            assert_eq!(new_weights[0][0][0], network.layers[0][0].output_weights[0]);
+            // check if the network learns (approaches target)
+            assert!(prev_output > actual[0]);
+
+            // prepare for next iteration
+            prev_weight = new_weights[0][0][0];
+            prev_output = actual[0];
+        }
     }
 }

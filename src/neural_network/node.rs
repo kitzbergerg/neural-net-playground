@@ -31,3 +31,27 @@ impl Node {
         out
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_calc_output() {
+        let mut node = Node {
+            prev_input: 0.0,
+            prev_output: 0.0,
+            bias: 0.5,
+            output_weights: vec![0.5],
+        };
+        let out = node.calc_output(vec![
+            Edge { value: 1.0, weight: 1.0 },
+            Edge {
+                value: 2.5,
+                weight: 0.5,
+            }]);
+
+        assert_eq!(node.prev_input, 2.25);
+        assert_eq!(out, activation_function(node.prev_input + node.bias));
+    }
+}
