@@ -1,7 +1,7 @@
-use itertools::izip;
+use rand::Rng;
 use crate::neural_network::edge::Edge;
 use crate::neural_network::node::Node;
-use crate::neural_network::utils::{derivative_of_activation_function, derivative_of_cost_function, Transpose};
+use crate::neural_network::utils::derivative_of_activation_function;
 
 #[derive(Debug)]
 pub struct NeuralNet {
@@ -11,7 +11,17 @@ pub struct NeuralNet {
 
 impl NeuralNet {
     pub fn init(learning_rate: f32, layer_sizes: &[usize]) -> Self {
-        let mut layers = (0..layer_sizes.len() - 1)
+        let mut rng = rand::thread_rng();
+        let input_layer = (0..layer_sizes[0])
+            .map(|_| Node {
+                prev_input: 0.0,
+                prev_output: 0.0,
+                bias: 0.0,
+                output_weights: (0..layer_sizes[1]).map(|_| rng.gen_range(0.0..1.0)).collect(),
+            })
+            .collect::<Vec<_>>();
+
+        let mut hidden_layers = (1..layer_sizes.len() - 1)
             .map(|pos| Self::random_nodes(layer_sizes[pos], layer_sizes[pos + 1]))
             .collect::<Vec<_>>();
 
@@ -24,6 +34,9 @@ impl NeuralNet {
             })
             .collect::<Vec<_>>();
 
+        let mut layers = Vec::with_capacity(layer_sizes.len());
+        layers.push(input_layer);
+        layers.append(&mut hidden_layers);
         layers.push(output_layer);
         let network = NeuralNet {
             learning_rate,
@@ -32,8 +45,8 @@ impl NeuralNet {
         network
     }
 
-    pub fn feedforward_propagation(&mut self, input: Vec<f32>) -> Vec<f32> {
-        let initial_input = input.into_iter().map(|i| vec![Edge { value: i, weight: 1.0 }]).collect::<Vec<_>>();
+    pub fn feedforward_propagation(&mut self, input: &Vec<f32>) -> Vec<f32> {
+        let initial_input = input.iter().map(|i| vec![Edge { value: *i, weight: 1.0 }]).collect::<Vec<_>>();
 
         // walk through all hidden layers
         let outputs = self.layers.iter_mut()
@@ -53,7 +66,7 @@ impl NeuralNet {
     pub fn backpropagation(&self, actual: Vec<f32>, target: Vec<f32>) -> Vec<Vec<Vec<f32>>> {
         let init_first_term = actual.iter()
             .zip(target)
-            .map(|(a, t)| derivative_of_cost_function(a - t))
+            .map(|(a, t)| a - t)
             .collect::<Vec<_>>();
 
         let mut new_weights = Vec::new();
@@ -70,8 +83,8 @@ impl NeuralNet {
 
                 // calculate new weights
                 let mut new_weights_for_layer = vec![vec![0.0; current_layer.len()]; prev_layer.len()];
-                for i_prev in (0..prev_layer.len()).into_iter() {
-                    for i_current in (0..current_layer.len()).into_iter() {
+                for i_prev in 0..prev_layer.len() {
+                    for i_current in 0..current_layer.len() {
                         let old_weight = prev_layer[i_prev].output_weights[i_current];
                         let new_weight = old_weight -
                             self.learning_rate *
@@ -85,9 +98,9 @@ impl NeuralNet {
 
                 // calculate first_term for next iteration
                 let mut out = vec![0.0; prev_layer.len()];
-                for i_prev in (0..prev_layer.len()).into_iter() {
+                for i_prev in 0..prev_layer.len() {
                     let mut sum = 0.0;
-                    for i_current in (0..current_layer.len()).into_iter() {
+                    for i_current in 0..current_layer.len() {
                         let weight = prev_layer[i_prev].output_weights[i_current];
                         sum += weight * first_term[i_current] * second_term[i_current];
                     }
@@ -101,11 +114,11 @@ impl NeuralNet {
     }
 
     pub fn update_weights(&mut self, new_weights: Vec<Vec<Vec<f32>>>) {
-        (0..self.layers.len())
-            .into_iter()
+        self.layers
+            .iter_mut()
             .zip(new_weights)
-            .for_each(|(i, new_weights_for_layer)| {
-                self.layers[i].iter_mut()
+            .for_each(|(layer, new_weights_for_layer)| {
+                layer.iter_mut()
                     .zip(new_weights_for_layer)
                     .for_each(|(node, weights)| node.output_weights = weights)
             });
@@ -114,24 +127,14 @@ impl NeuralNet {
 
     fn calc_inputs_of_next_layer(nodes: &mut Vec<Node>, inputs: Vec<Vec<Edge>>) -> Vec<Vec<Edge>> {
         // TODO: init differently
-        let mut out = vec![vec![Edge { value: 0.0, weight: 0.0 }; nodes[0].output_weights.len()]; nodes.len()];
-        for i in (0..nodes.len()).into_iter() {
+        let mut out = vec![vec![Edge { value: 0.0, weight: 0.0 }; nodes.len()]; nodes[0].output_weights.len()];
+        for i in 0..nodes.len() {
             let output = nodes[i].calc_output(&inputs[i]);
-            for j in (0..nodes[i].output_weights.len()).into_iter() {
-                out[i][j] = Edge { value: output, weight: nodes[i].output_weights[j] };
+            for j in 0..nodes[i].output_weights.len() {
+                out[j][i] = Edge { value: output, weight: nodes[i].output_weights[j] };
             }
         }
         out
-        /*
-                nodes.iter_mut()
-                    .zip(inputs)
-                    .map(|(node, input)| {
-                        let output = node.calc_output(input);
-                        node.output_weights.iter().map(|weight| Edge { value: output, weight: *weight }).collect::<Vec<_>>()
-                    })
-                    .collect::<Vec<_>>()
-                    .transpose()
-                    */
     }
 
     fn random_nodes(size: usize, next_layer_size: usize) -> Vec<Node> {
@@ -143,6 +146,8 @@ impl NeuralNet {
 
 #[cfg(test)]
 mod test {
+    use rand::Rng;
+    use crate::get_index_of_maximum;
     use super::*;
 
     #[test]
@@ -175,9 +180,9 @@ mod test {
 
         let mut prev_output = f32::MAX;
         let mut prev_weight = network.layers[0][0].output_weights[0];
-        for i in (0..100).into_iter() {
+        for i in 0..100 {
             println!("----- Iteration: {i} -----");
-            let actual = network.feedforward_propagation(vec![input]);
+            let actual = network.feedforward_propagation(&vec![input]);
             let new_weights = network.backpropagation(actual.clone(), vec![target]);
             network.update_weights(new_weights.clone());
 
@@ -193,6 +198,34 @@ mod test {
             // prepare for next iteration
             prev_weight = new_weights[0][0][0];
             prev_output = actual[0];
+        }
+    }
+
+    #[test]
+    fn test_network_with_function() {
+        let mut rng = rand::thread_rng();
+        let function = |x: f32| x;
+        let mut training_data_generator = (0..1).cycle().map(|_| {
+            let x = rng.gen_range(0.0..1.0);
+            let y = rng.gen_range(0.0..1.0);
+            let mut target = vec![0.0; 2];
+            if function(x) > y { target[0] = 1.0 } else { target[1] = 1.0 };
+            (vec![x, y], target)
+        });
+
+        let mut network = NeuralNet::init(0.1, &[2, 10, 2]);
+
+        for i in 0..100 {
+            let (input, target) = training_data_generator.next().unwrap();
+            println!("----- Iteration: {i} -----");
+            let actual = network.feedforward_propagation(&input);
+            let new_weights = network.backpropagation(actual.clone(), target.clone());
+            network.update_weights(new_weights.clone());
+
+            println!("input: {:?}", input);
+            println!("output: {:?} (={})", actual, get_index_of_maximum(&actual) == 0);
+            println!("target: {:?} (={})", target, target[0] == 1.0);
+            println!();
         }
     }
 }

@@ -24,9 +24,9 @@ fn main() {
 pub fn train(neural_network: &mut NeuralNet, data: Data, number_of_outputs: usize) {
     println!("Training data size: {}", data.0.len());
     for (training, label) in data.0 {
-        let input = training.iter().map(|x| *x as f32).collect::<Vec<_>>();
+        let input = training.iter().map(|x| (*x as f32) / 256.0).collect::<Vec<_>>();
         // print_images(label, &input);
-        let output = neural_network.feedforward_propagation(input);
+        let output = neural_network.feedforward_propagation(&input);
         // println!("output: {:?}", output);
 
         let mut actual = vec![0.0; number_of_outputs];
@@ -42,15 +42,10 @@ pub fn test(neural_network: &mut NeuralNet, data: Data) {
     let mut sum = 0.0;
 
     for (training, label) in data.0 {
-        let input = training.iter().map(|x| *x as f32).collect::<Vec<_>>();
-        let output = neural_network.feedforward_propagation(input);
+        let input = training.iter().map(|x| (*x as f32) / 256.0).collect::<Vec<_>>();
+        let output = neural_network.feedforward_propagation(&input);
         println!("output: {:?}", output);
-        let index_of_max = output
-            .iter()
-            .enumerate()
-            .max_by(|(_, a), (_, b)| a.total_cmp(b))
-            .map(|(index, _)| index)
-            .unwrap();
+        let index_of_max = get_index_of_maximum(&output);
         println!("Guess: {}, Label: {}", index_of_max, label);
         if index_of_max == label as usize { sum += 1.0; }
     }
@@ -60,10 +55,20 @@ pub fn test(neural_network: &mut NeuralNet, data: Data) {
     println!("Success rate: {}%", 100.0 * sum / total as f32);
 }
 
+pub fn get_index_of_maximum(output: &Vec<f32>) -> usize {
+    output
+        .iter()
+        .enumerate()
+        .max_by(|(_, a), (_, b)| a.total_cmp(b))
+        .map(|(index, _)| index)
+        .unwrap()
+}
+
+#[allow(dead_code)]
 fn print_images(label: u8, input: &Vec<f32>) {
     println!("input:");
-    for y in (0..28).into_iter() {
-        for x in (0..28).into_iter() {
+    for y in 0..28 {
+        for x in 0..28 {
             print!("{}", if *input.get(y * 28 + x).unwrap() == 0.0 { " " } else { "X" });
         }
         println!()
