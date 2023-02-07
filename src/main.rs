@@ -22,6 +22,7 @@ fn main() {
 
 
 pub fn train(neural_network: &mut NeuralNet, data: Data, number_of_outputs: usize) {
+    println!("Training...");
     for (training, label) in data.0 {
         let input = training.iter().map(|x| (*x as f32) / 256.0).collect::<Vec<_>>();
         // print_images(label, &input);
@@ -35,6 +36,7 @@ pub fn train(neural_network: &mut NeuralNet, data: Data, number_of_outputs: usiz
 }
 
 pub fn test(neural_network: &mut NeuralNet, data: Data) {
+    println!("Testing...");
     let total = data.0.len();
     let mut sum = 0.0;
 
