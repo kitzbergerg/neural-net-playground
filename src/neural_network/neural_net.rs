@@ -11,14 +11,16 @@ pub struct NeuralNet {
 
 impl NeuralNet {
     pub fn init(learning_rate: f32, layer_sizes: &[usize]) -> Self {
-        // First layers use SIGMOID
         let mut layers = layer_sizes.iter()
             .zip(layer_sizes[1..layer_sizes.len() - 1].iter())
             .map(|(left, right)| Layer::init_random(*left, *right, learning_rate, SIGMOID))
             .collect::<Vec<_>>();
 
-        // output layer uses SOFTMAX
-        layers.push(Layer::init_random(layer_sizes[layer_sizes.len() - 2], layer_sizes[layer_sizes.len() - 1], 0.1, SOFTMAX));
+        layers.push(Layer::init_random(
+            layer_sizes[layer_sizes.len() - 2],
+            layer_sizes[layer_sizes.len() - 1],
+            0.1,
+            SOFTMAX));
 
         NeuralNet {
             layers
@@ -100,7 +102,7 @@ mod test {
                     learning_rate: 0.1,
                     biases: arr2(&[[0.0]]),
                     weights: arr2(&[[initial_weight]]),
-                    input: Default::default(),
+                    input_during_feedforward: Default::default(),
                     activation_function: SIGMOID,
                 }
             ]
@@ -129,7 +131,7 @@ mod test {
     fn test_network_with_function() {
         let mut rng = thread_rng();
         let function = |x: f32, y: f32| x > y;
-        let mut training_data_generator = (0..1).cycle().map(|_| {
+        let mut data_generator = (0..1).cycle().map(|_| {
             let x = rng.gen_range(0.0..1.0);
             let y = rng.gen_range(0.0..1.0);
             let mut target = vec![0.0; 2];
@@ -137,16 +139,44 @@ mod test {
             (vec![x, y], target)
         });
 
-        let mut network = NeuralNet::init(0.1, &[2, 10, 2]);
+        let mut network = NeuralNet::init(0.1, &[2, 10, 10, 2]);
 
         println!("Training...");
-        for _ in 0..100000 {
-            let (input, target) = training_data_generator.next().unwrap();
-            let actual = network.feedforward_propagation(input.clone());
-            network.backpropagation(actual.clone(), target.clone());
+        for _ in 0..10000 {
+            let (input, target) = data_generator.next().unwrap();
+            let actual = network.feedforward_propagation(input);
+            network.backpropagation(actual, target);
         }
 
         println!("Testing...");
-        network.test(training_data_generator.take(100).collect());
+        network.test(data_generator.take(1000).collect());
+    }
+
+    #[test]
+    fn test_and_logical_operators() {
+        let mut rng = thread_rng();
+        let map = [
+            (vec![0.0, 0.0], vec![0.0, 1.0]),
+            (vec![0.0, 1.0], vec![0.0, 1.0]),
+            (vec![1.0, 0.0], vec![0.0, 1.0]),
+            (vec![1.0, 1.0], vec![1.0, 0.0])
+        ];
+        let mut data_generator = (0..1).cycle().map(|_| {
+            map.get(rng.gen_range(0..3)).unwrap().clone()
+        });
+
+        let mut network = NeuralNet::init(0.1, &[2, 10, 2]);
+
+        println!("Training...");
+        for _ in 0..10000 {
+            let (input, target) = data_generator.next().unwrap();
+            let actual = network.feedforward_propagation(input);
+            // TODO: for some reason weight values just explode
+            println!("{:?}", actual);
+            network.backpropagation(actual, target);
+        }
+
+        println!("Testing...");
+        network.test(data_generator.take(1000).collect());
     }
 }

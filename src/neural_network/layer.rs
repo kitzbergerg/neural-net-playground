@@ -1,6 +1,6 @@
 use ndarray::Array2;
 use rand::{Rng, thread_rng};
-use crate::neural_network::activation_functions::ActivationFunction;
+use crate::neural_network::activation_functions::ApplyActivationFunction;
 
 #[derive(Debug, Clone)]
 pub(in crate::neural_network) struct Layer {
@@ -12,12 +12,12 @@ pub(in crate::neural_network) struct Layer {
     /// matrix is always (right x left)
     pub(in crate::neural_network) weights: Array2<f32>,
     /// matrix is always (left x 1)
-    pub(in crate::neural_network) input: Array2<f32>,
-    pub(in crate::neural_network) activation_function: ActivationFunction,
+    pub(in crate::neural_network) input_during_feedforward: Array2<f32>,
+    pub(in crate::neural_network) activation_function: ApplyActivationFunction,
 }
 
 impl Layer {
-    pub(in crate::neural_network) fn init_random(left: usize, right: usize, learning_rate: f32, activation_function: ActivationFunction) -> Self {
+    pub(in crate::neural_network) fn init_random(left: usize, right: usize, learning_rate: f32, activation_function: ApplyActivationFunction) -> Self {
         let mut rng = thread_rng();
         let mut random_vec = |len| (0..len).map(|_| rng.gen_range(-0.5..0.5)).collect::<Vec<_>>();
         Layer {
@@ -26,7 +26,7 @@ impl Layer {
             learning_rate,
             biases: Array2::from_shape_vec((right, 1), random_vec(right)).unwrap(),
             weights: Array2::from_shape_vec((right, left), random_vec(right * left)).unwrap(),
-            input: Array2::default((0, 0)), // will be set later
+            input_during_feedforward: Array2::default((0, 0)), // will be set later
             activation_function,
         }
     }
@@ -41,7 +41,7 @@ impl Layer {
         assert_eq!(output.shape()[0], self.right);
         assert_eq!(output.shape()[1], 1);
 
-        self.input = input;
+        self.input_during_feedforward = input;
         output
     }
 
@@ -49,11 +49,17 @@ impl Layer {
         assert_eq!(delta.shape()[0], self.right);
         assert_eq!(delta.shape()[1], 1);
 
-        self.weights = &self.weights - self.learning_rate * delta.dot(&self.input.t());
-        self.biases = &self.biases - self.learning_rate * delta.sum();
+        // calc new weights and biases
+        let delta_weights = self.learning_rate * delta.dot(&self.input_during_feedforward.t());
+        let delta_biases = self.learning_rate * delta.sum();
 
+        // calc next delta
         let pre_activation_function = self.weights.t().dot(delta);
         let new_delta = (self.activation_function.derivative_of_activation_function)(pre_activation_function);
+
+        self.weights = &self.weights - delta_weights;
+        self.biases = &self.biases - delta_biases;
+
         assert_eq!(new_delta.shape()[0], self.left);
         assert_eq!(new_delta.shape()[1], 1);
 
