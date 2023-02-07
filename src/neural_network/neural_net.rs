@@ -1,6 +1,8 @@
 use ndarray::Array2;
-use rand::{Rng, thread_rng};
-use crate::neural_network::utils::{activation_function, derivative_of_activation_function};
+use rand::thread_rng;
+use rand::seq::SliceRandom;
+use crate::neural_network::activation_functions::{SIGMOID, SOFTMAX};
+use crate::neural_network::layer::Layer;
 
 #[derive(Debug, Clone)]
 pub struct NeuralNet {
@@ -9,21 +11,45 @@ pub struct NeuralNet {
 
 impl NeuralNet {
     pub fn init(learning_rate: f32, layer_sizes: &[usize]) -> Self {
-        let mut layer_sizes_shifted_forward_by_1 = layer_sizes.iter();
-        layer_sizes_shifted_forward_by_1.next();
+        // First layers use SIGMOID
+        let mut layers = layer_sizes.iter()
+            .zip(layer_sizes[1..layer_sizes.len() - 1].iter())
+            .map(|(left, right)| Layer::init_random(*left, *right, learning_rate, SIGMOID))
+            .collect::<Vec<_>>();
+
+        // output layer uses SOFTMAX
+        layers.push(Layer::init_random(layer_sizes[layer_sizes.len() - 2], layer_sizes[layer_sizes.len() - 1], 0.1, SOFTMAX));
 
         NeuralNet {
-            layers: layer_sizes.iter().zip(layer_sizes_shifted_forward_by_1)
-                .map(|(left, right)| Layer::init_random(*left, *right, learning_rate))
-                .collect(),
+            layers
         }
+    }
+
+    pub fn train(&mut self, mut data: Vec<(Vec<f32>, Vec<f32>)>) {
+        data.shuffle(&mut thread_rng());
+        for (input, target) in data {
+            let actual = self.feedforward_propagation(input);
+            self.backpropagation(actual, target);
+        }
+    }
+
+    pub fn test(&mut self, data: Vec<(Vec<f32>, Vec<f32>)>) {
+        let total = data.len();
+        let mut sum = 0.0;
+
+        for (input, label) in data {
+            let actual = self.feedforward_propagation(input);
+            if get_index_of_maximum(&actual) == get_index_of_maximum(&label) { sum += 1.0; }
+        }
+
+        println!("Guessed {}/{} correctly ({}%)", sum, total, 100.0 * sum / total as f32);
     }
 
     pub fn feedforward_propagation(&mut self, input: Vec<f32>) -> Vec<f32> {
         let initial_input = Array2::from_shape_vec((input.len(), 1), input).unwrap();
 
         let output = self.layers.iter_mut()
-            .fold(initial_input, |input, layer| layer.feedforward_propagation(input, activation_function));
+            .fold(initial_input, |input, layer| layer.feedforward_propagation(input));
 
         output.into_raw_vec()
     }
@@ -36,74 +62,29 @@ impl NeuralNet {
 
         let _ = self.layers.iter_mut()
             .rev()
-            .fold(initial_delta, |delta, layer| layer.backpropagation(&delta, derivative_of_activation_function));
+            .fold(initial_delta, |delta, layer| layer.backpropagation(&delta));
     }
 }
 
-#[derive(Debug, Clone)]
-struct Layer {
-    left: usize,
-    right: usize,
-    learning_rate: f32,
-    /// matrix is always (right x 1)
-    biases: Array2<f32>,
-    /// matrix is always (right x left)
-    weights: Array2<f32>,
-    /// matrix is always (left x 1)
-    input: Array2<f32>,
-}
-
-impl Layer {
-    fn init_random(left: usize, right: usize, learning_rate: f32) -> Self {
-        let mut rng = thread_rng();
-        let mut random_vec = |len| (0..len).map(|_| rng.gen_range(-0.5..0.5)).collect::<Vec<_>>();
-        Layer {
-            left,
-            right,
-            learning_rate,
-            biases: Array2::from_shape_vec((right, 1), random_vec(right)).unwrap(),
-            weights: Array2::from_shape_vec((right, left), random_vec(right * left)).unwrap(),
-            input: Array2::default((0, 0)), // will be set later
-        }
-    }
-
-    fn feedforward_propagation(&mut self, input: Array2<f32>, activation_function: fn(f32) -> f32) -> Array2<f32> {
-        assert_eq!(input.shape()[0], self.left);
-        assert_eq!(input.shape()[1], 1);
-
-        let output = (&self.weights.dot(&input) + &self.biases).map(|a| activation_function(*a));
-
-        assert_eq!(output.shape()[0], self.right);
-        assert_eq!(output.shape()[1], 1);
-
-        self.input = input;
-        output
-    }
-
-    fn backpropagation(&mut self, delta: &Array2<f32>, derivative_of_activation_function: fn(f32) -> f32) -> Array2<f32> {
-        assert_eq!(delta.shape()[0], self.right);
-        assert_eq!(delta.shape()[1], 1);
-
-        self.weights = &self.weights - self.learning_rate * delta.dot(&self.input.t());
-        self.biases = &self.biases - self.learning_rate * delta.sum();
-
-        let new_delta = self.weights.t().dot(delta).map(|x| derivative_of_activation_function(*x));
-        assert_eq!(new_delta.shape()[0], self.left);
-        assert_eq!(new_delta.shape()[1], 1);
-
-        new_delta
-    }
+pub fn get_index_of_maximum(output: &Vec<f32>) -> usize {
+    output
+        .iter()
+        .enumerate()
+        .max_by(|(_, a), (_, b)| a.total_cmp(b))
+        .map(|(index, _)| index)
+        .unwrap()
 }
 
 #[cfg(test)]
 mod test {
     use ndarray::arr2;
     use rand::Rng;
-    use crate::get_index_of_maximum;
+    use crate::neural_network::activation_functions::SIGMOID;
+    use crate::neural_network::layer::Layer;
     use super::*;
 
     #[test]
-    fn test_learning_with_2_node_network() {
+    fn test_converge_to_value() {
         let target = 0.5;
         let input = 1.5;
         let initial_weight = 0.8;
@@ -120,55 +101,52 @@ mod test {
                     biases: arr2(&[[0.0]]),
                     weights: arr2(&[[initial_weight]]),
                     input: Default::default(),
+                    activation_function: SIGMOID,
                 }
             ]
         };
 
         let mut prev_output = f32::MAX;
-        let mut prev_weight = network.layers[0].weights.clone();
         for i in 0..10 {
             println!("----- Iteration: {i} -----");
             let actual = network.feedforward_propagation(vec![input]);
 
             network.backpropagation(actual.clone(), vec![target]);
 
-            println!("Network output: {}, Target: {}", actual[0], target);
-            println!("Old weight: {}, New weight: {}", prev_weight, &network.layers[0].weights);
+            println!("Network output: {}", actual[0]);
+            println!("New weight: {}", &network.layers[0].weights);
             println!();
 
             // check if the network learns (approaches target)
             assert!(prev_output > actual[0]);
 
             // prepare for next iteration
-            prev_weight = network.layers[0].weights.clone();
             prev_output = actual[0];
         }
     }
 
     #[test]
     fn test_network_with_function() {
-        let mut rng = rand::thread_rng();
-        let function = |x: f32| x;
+        let mut rng = thread_rng();
+        let function = |x: f32, y: f32| x > y;
         let mut training_data_generator = (0..1).cycle().map(|_| {
             let x = rng.gen_range(0.0..1.0);
             let y = rng.gen_range(0.0..1.0);
             let mut target = vec![0.0; 2];
-            if function(x) > y { target[0] = 1.0 } else { target[1] = 1.0 };
+            if function(x, y) { target[0] = 1.0 } else { target[1] = 1.0 };
             (vec![x, y], target)
         });
 
         let mut network = NeuralNet::init(0.1, &[2, 10, 2]);
 
-        for i in 0..100 {
+        println!("Training...");
+        for _ in 0..100000 {
             let (input, target) = training_data_generator.next().unwrap();
-            println!("----- Iteration: {i} -----");
             let actual = network.feedforward_propagation(input.clone());
             network.backpropagation(actual.clone(), target.clone());
-
-            println!("input: {:?}", input);
-            println!("output: {:?} (={})", actual, get_index_of_maximum(&actual) == 0);
-            println!("target: {:?} (={})", target, target[0] == 1.0);
-            println!();
         }
+
+        println!("Testing...");
+        network.test(training_data_generator.take(100).collect());
     }
 }

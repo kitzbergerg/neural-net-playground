@@ -1,2 +1,3 @@
 pub mod neural_net;
-mod utils;
+mod activation_functions;
+mod layer;

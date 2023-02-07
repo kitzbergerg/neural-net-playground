@@ -1,8 +1,10 @@
 use std::fs::File;
 use std::io::Read;
+use std::mem::replace;
 use std::str::FromStr;
+use crate::NUMBER_OF_OUTPUTS;
 
-pub struct Data(pub Vec<(Vec<u8>, u8)>);
+pub struct Data(pub Vec<(Vec<f32>, Vec<f32>)>);
 
 
 impl Data {
@@ -15,9 +17,14 @@ impl Data {
             .map(|numbers_in_line| {
                 let (a, b) = numbers_in_line.split_at(1);
                 (b.to_vec(), a[0])
-            }
-            )
-            .collect();
+            })
+            .map(|(inputs, label)| {
+                let inputs = inputs.into_iter().map(|x| x as f32 / 256.0).collect::<Vec<_>>();
+                let mut one_hot = vec![0.0; NUMBER_OF_OUTPUTS];
+                let _ = replace(&mut one_hot[label as usize], 1.0);
+                (inputs, one_hot)
+            })
+            .collect::<Vec<_>>();
         Data(data)
     }
 }
