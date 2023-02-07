@@ -9,7 +9,7 @@ mod neural_network;
 
 const NUMBER_OF_INPUTS: usize = 784;
 const NUMBER_OF_OUTPUTS: usize = 10;
-const LAYER_SIZES: [usize; 4] = [NUMBER_OF_INPUTS, 20, 10, NUMBER_OF_OUTPUTS];
+const LAYER_SIZES: [usize; 3] = [NUMBER_OF_INPUTS, 10, NUMBER_OF_OUTPUTS];
 
 fn main() {
     let data = Data::read_data_from_csv(File::open(Path::new("data/mnist_train.csv")).unwrap());
@@ -22,35 +22,29 @@ fn main() {
 
 
 pub fn train(neural_network: &mut NeuralNet, data: Data, number_of_outputs: usize) {
-    println!("Training data size: {}", data.0.len());
     for (training, label) in data.0 {
         let input = training.iter().map(|x| (*x as f32) / 256.0).collect::<Vec<_>>();
         // print_images(label, &input);
-        let output = neural_network.feedforward_propagation(&input);
+        let output = neural_network.feedforward_propagation(input);
         // println!("output: {:?}", output);
 
         let mut actual = vec![0.0; number_of_outputs];
         let _ = replace(&mut actual[label as usize], 1.0);
-        let new_weights = neural_network.backpropagation(output, actual);
-        neural_network.update_weights(new_weights);
+        neural_network.backpropagation(output, actual);
     }
 }
 
 pub fn test(neural_network: &mut NeuralNet, data: Data) {
-    println!("Test data size: {}", data.0.len());
     let total = data.0.len();
     let mut sum = 0.0;
 
     for (training, label) in data.0 {
         let input = training.iter().map(|x| (*x as f32) / 256.0).collect::<Vec<_>>();
-        let output = neural_network.feedforward_propagation(&input);
-        println!("output: {:?}", output);
+        let output = neural_network.feedforward_propagation(input);
         let index_of_max = get_index_of_maximum(&output);
-        println!("Guess: {}, Label: {}", index_of_max, label);
         if index_of_max == label as usize { sum += 1.0; }
     }
 
-    println!("{:#?}", neural_network);
     println!("Guessed {}/{} correctly", sum, total);
     println!("Success rate: {}%", 100.0 * sum / total as f32);
 }
