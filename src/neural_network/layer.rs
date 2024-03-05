@@ -51,7 +51,7 @@ impl Layer {
 
         // calc new weights and biases
         let delta_weights = self.learning_rate * delta.dot(&self.input_during_feedforward.t());
-        let delta_biases = self.learning_rate * delta.sum();
+        let delta_biases = self.learning_rate * delta;
 
         // calc next delta
         let pre_activation_function = self.weights.t().dot(delta);

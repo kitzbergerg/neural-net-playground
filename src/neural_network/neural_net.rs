@@ -1,3 +1,6 @@
+use std::thread::sleep;
+use std::time::Duration;
+
 use ndarray::Array2;
 use rand::thread_rng;
 use rand::seq::SliceRandom;
@@ -30,7 +33,12 @@ impl NeuralNet {
     pub fn train(&mut self, mut data: Vec<(Vec<f32>, Vec<f32>)>) {
         data.shuffle(&mut thread_rng());
         for (input, target) in data {
-            let actual = self.feedforward_propagation(input);
+            assert_eq!(self.layers.first().unwrap().left, input.len());
+            assert_eq!(self.layers.last().unwrap().right, target.len());
+            let actual = self.feedforward_propagation(input.clone());
+            println!("Weights: {:?}, Biases: {:?}", self.layers.last().unwrap().weights, self.layers.last().unwrap().biases);
+            println!("Target: {target:?}, Actual: {actual:?}, Image: {input:?}");
+            sleep(Duration::from_secs(2));
             self.backpropagation(actual, target);
         }
     }
