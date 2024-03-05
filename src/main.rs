@@ -5,7 +5,7 @@ mod neural_network;
 
 const NUMBER_OF_INPUTS: usize = 784;
 const NUMBER_OF_OUTPUTS: usize = 10;
-const LAYER_SIZES: [usize; 3] = [NUMBER_OF_INPUTS, 12, NUMBER_OF_OUTPUTS];
+const LAYER_SIZES: [usize; 3] = [NUMBER_OF_INPUTS, 30, NUMBER_OF_OUTPUTS];
 
 #[tokio::main]
 async fn main() {
