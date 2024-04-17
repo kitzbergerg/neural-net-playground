@@ -7,7 +7,10 @@ pub const SIGMOID: ApplyActivationFunction = ApplyActivationFunction {
     derivative_of_activation_function: |array| array.map(|x| derivative_of_sigmoid(*x)),
 };
 pub const SOFTMAX: ApplyActivationFunction = ApplyActivationFunction {
-    activation_function: |array| array.map(|x| *x / array.sum()),
+    activation_function: |array| {
+        let array = array.map(|x| E.powf(*x));
+        array.map(|x| *x / array.sum())
+    },
     derivative_of_activation_function: |_| unimplemented!(), // there is no derivative
 };
 
